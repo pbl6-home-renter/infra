@@ -1,23 +1,31 @@
-# 1. Khi đã có tên miền và trỏ DNS về IP của EC2 (Caddy tự cấp HTTPS Let's Encrypt):
-{$APP_DOMAIN:api.example.com} {
-    # Encode gzip/zstd để tối ưu băng thông
+:80 {
     encode zstd gzip
 
-    # Định tuyến cho Identity Service (nếu có tiền tố /auth)
     handle /auth/* {
+        reverse_proxy identity:3001
+    }
+
+    handle {
         reverse_proxy identity:3001
     }
 }
 
-# 2. (Tùy chọn) Giao diện quản lý RabbitMQ Dashboard (nên bảo vệ mật khẩu nếu public)
-# rabbitmq.{$APP_DOMAIN:example.com} {
-#     reverse_proxy rabbitmq:15672
-# }
+:15672 {
+    reverse_proxy rabbitmq:15672
+}
 
-# 3. Chế độ Test trực tiếp bằng IP (khi chưa mua domain hoặc chưa trỏ DNS)
-# Bỏ comment block bên dưới nếu muốn test ngay qua HTTP port 80:
-# :80 {
+# {$APP_DOMAIN:api.example.com} {
+#     encode zstd gzip
+#
+#     handle /auth/* {
+#         reverse_proxy identity:3001
+#     }
+#
 #     handle {
 #         reverse_proxy identity:3001
 #     }
+# }
+#
+# rabbitmq.{$APP_DOMAIN:example.com} {
+#     reverse_proxy rabbitmq:15672
 # }

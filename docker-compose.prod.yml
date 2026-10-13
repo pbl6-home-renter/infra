@@ -8,6 +8,7 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      - "15672:15672"
     environment:
       - APP_DOMAIN=${APP_DOMAIN:-api.example.com}
     volumes:
@@ -35,17 +36,17 @@ services:
       timeout: 5s
       retries: 5
 
-  identity:
-    image: ${DOCKERHUB_USERNAME:-rentify}/rentify-identity:${IMAGE_TAG:-latest}
-    container_name: identity
-    restart: unless-stopped
-    env_file:
-      - ./env/identity.env
-    networks:
-      - rentify-net
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
+  # identity:
+  #   image: ${DOCKERHUB_USERNAME:-rentify}/rentify-identity:${IMAGE_TAG:-latest}
+  #   container_name: identity
+  #   restart: unless-stopped
+  #   env_file:
+  #     - ./env/identity.env
+  #   networks:
+  #     - rentify-net
+  #   depends_on:
+  #     rabbitmq:
+  #       condition: service_healthy
 
 networks:
   rentify-net:

@@ -60,6 +60,7 @@ infra/
 * **SSH (Port 22):** IP của bạn (hoặc `0.0.0.0/0`)
 * **HTTP (Port 80):** `0.0.0.0/0`
 * **HTTPS (Port 443):** `0.0.0.0/0`
+* **RabbitMQ Dashboard (Port 15672):** IP của bạn (hoặc `0.0.0.0/0` nếu đang test)
 
 ### Bước 2: SSH vào máy EC2
 Sử dụng file key `rentify-key.pem`:
