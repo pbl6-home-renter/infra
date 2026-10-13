@@ -17,8 +17,8 @@ services:
       - caddy_config:/config
     networks:
       - rentify-net
-    depends_on:
-      - identity
+    # depends_on:
+    #   - identity
 
   rabbitmq:
     image: rabbitmq:3-management-alpine

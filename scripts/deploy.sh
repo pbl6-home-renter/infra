@@ -6,24 +6,9 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 
 cd "$ROOT_DIR"
 
-echo "=========================================="
-echo " [DEPLOY] Bắt đầu triển khai trên EC2"
-echo "=========================================="
-
-if [ ! -f ".env" ]; then
-    echo "[!] Cảnh báo: Chưa tìm thấy file .env ở thư mục gốc infra."
-    echo "[!] Đang copy từ .env.example..."
-    cp .env.example .env
-fi
-
 if [ ! -f "env/rabbitmq.env" ]; then
     echo "[!] Đang khởi tạo env/rabbitmq.env từ example..."
     cp env/rabbitmq.env.example env/rabbitmq.env
-fi
-
-if [ ! -f "env/identity.env" ]; then
-    echo "[!] Đang khởi tạo env/identity.env từ example..."
-    cp env/identity.env.example env/identity.env
 fi
 
 echo "[1/4] Kéo (Pull) Docker images mới nhất..."
