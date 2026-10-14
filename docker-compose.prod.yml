@@ -37,7 +37,7 @@ services:
       retries: 5
 
   identity:
-    image: ${DOCKERHUB_USERNAME:-rentify}/identity-service:${IMAGE_TAG:-latest}
+    image: baocules/identity-service:latest
     container_name: identity
     restart: unless-stopped
     env_file:
