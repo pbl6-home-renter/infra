@@ -4,10 +4,6 @@
     handle /identity-service/* {
         reverse_proxy identity:3001
     }
-
-    handle {
-        reverse_proxy identity:3001
-    }
 }
 
 :15672 {
