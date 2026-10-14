@@ -11,6 +11,11 @@ if [ ! -f "env/rabbitmq.env" ]; then
     cp env/rabbitmq.env.example env/rabbitmq.env
 fi
 
+if [ ! -f "env/identity.env" ]; then
+    echo "[!] Đang khởi tạo env/identity.env từ example..."
+    cp env/identity.env.example env/identity.env
+fi
+
 echo "[1/4] Kéo (Pull) Docker images mới nhất..."
 docker compose -f docker-compose.prod.yml pull
 

@@ -1,7 +1,7 @@
 :80 {
     encode zstd gzip
 
-    handle /auth/* {
+    handle /identity-service/* {
         reverse_proxy identity:3001
     }
 
