@@ -6,27 +6,41 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 
 cd "$ROOT_DIR"
 
-if [ ! -f "env/rabbitmq.env" ]; then
-    echo "[!] Đang khởi tạo env/rabbitmq.env từ example..."
-    cp env/rabbitmq.env.example env/rabbitmq.env
+COMPOSE_FILE="docker-compose.prod.yml"
+
+if [ "$#" -eq 0 ]; then
+    if [ ! -f "env/rabbitmq.env" ]; then
+        echo "[!] Đang khởi tạo env/rabbitmq.env từ example..."
+        cp env/rabbitmq.env.example env/rabbitmq.env
+    fi
+
+    if [ ! -f "env/identity.env" ]; then
+        echo "[!] Đang khởi tạo env/identity.env từ example..."
+        cp env/identity.env.example env/identity.env
+    fi
+
+    echo "[1/4] Kéo (Pull) Docker images mới nhất..."
+    docker compose -f "$COMPOSE_FILE" pull
+
+    echo "[2/4] Khởi động lại các container..."
+    docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
+
+    echo "[3/4] Dọn dẹp các image cũ (tránh đầy ổ cứng EC2)..."
+    docker image prune -f
+
+    echo "[4/4] Trạng thái các container đang chạy:"
+    docker compose -f "$COMPOSE_FILE" ps
+else
+    echo "[1/3] Kéo image cho services: $*"
+    docker compose -f "$COMPOSE_FILE" pull "$@"
+
+    echo "[2/3] Khởi động lại services: $*"
+    docker compose -f "$COMPOSE_FILE" up -d --no-deps "$@"
+
+    echo "[3/3] Dọn dẹp các image cũ..."
+    docker image prune -f
+    docker compose -f "$COMPOSE_FILE" ps "$@"
 fi
-
-if [ ! -f "env/identity.env" ]; then
-    echo "[!] Đang khởi tạo env/identity.env từ example..."
-    cp env/identity.env.example env/identity.env
-fi
-
-echo "[1/4] Kéo (Pull) Docker images mới nhất..."
-docker compose -f docker-compose.prod.yml pull
-
-echo "[2/4] Khởi động lại các container..."
-docker compose -f docker-compose.prod.yml up -d --remove-orphans
-
-echo "[3/4] Dọn dẹp các image cũ (tránh đầy ổ cứng EC2)..."
-docker image prune -f
-
-echo "[4/4] Trạng thái các container đang chạy:"
-docker compose -f docker-compose.prod.yml ps
 
 echo "=========================================="
 echo " [✓] Triển khai thành công!"

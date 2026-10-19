@@ -10,14 +10,15 @@ Kho lưu trữ điều phối trung tâm và hạ tầng triển khai (Orchestra
                Internet (Client / Web / Mobile)
                               │
                     ┌─────────▼─────────┐
-                    │  Port 80 / 443    │
+                    │ Port 80/443/5173  │
                     │   Caddy Gateway   │ ◄── Tự động cấp & gia hạn SSL
                     └─────────┬─────────┘
                               │ (Docker Internal Network: rentify-net)
                     ┌─────────┴─────────┐
                     ▼                   ▼
              ┌──────────────┐    ┌──────────────┐
-             │   identity   │    │   rabbitmq   │
+             │      web     │    │   identity    │
+             │  (Port 5173) │    │  (Port 3001)  │
              │  (Port 3001) │    │ (5672/15672) │
              └──────┬───────┘    └──────────────┘
                     │
@@ -25,7 +26,8 @@ Kho lưu trữ điều phối trung tâm và hạ tầng triển khai (Orchestra
           Supabase PostgreSQL (Cloud)
 ```
 
-* **Caddy:** Điểm đón duy nhất từ Internet (mở port 80 & 443), tự động xin chứng chỉ HTTPS Let's Encrypt và điều phối traffic tới service nội bộ.
+* **Caddy:** Điểm đón từ Internet (port 80, 443 và 5173), tự động xin chứng chỉ HTTPS Let's Encrypt khi dùng domain và điều phối traffic tới service nội bộ.
+* **Frontend Web:** Image public `${DOCKERHUB_USERNAME}/pbl6-web:latest`, chạy static SPA nội bộ tại port 5173 và được Caddy proxy ra `http://<EC2_PUBLIC_IP>:5173`.
 * **Identity Service:** Chạy độc lập trong container, giao tiếp an toàn qua mạng nội bộ Docker `rentify-net`.
 * **RabbitMQ:** Broker nội bộ cho các service giao tiếp async/event-driven.
 * **Supabase:** Managed PostgreSQL trên cloud.
@@ -60,6 +62,7 @@ infra/
 * **SSH (Port 22):** IP của bạn (hoặc `0.0.0.0/0`)
 * **HTTP (Port 80):** `0.0.0.0/0`
 * **HTTPS (Port 443):** `0.0.0.0/0`
+* **Frontend Web (Port 5173):** mở theo IP cần demo
 * **RabbitMQ Dashboard (Port 15672):** IP của bạn (hoặc `0.0.0.0/0` nếu đang test)
 
 ### Bước 2: SSH vào máy EC2
@@ -106,12 +109,28 @@ Mở từng file bằng `nano` để điền thông tin thật:
 * `.env`: Điền `DOCKERHUB_USERNAME` và `APP_DOMAIN`.
 * `env/rabbitmq.env`: Điền user/pass cho RabbitMQ.
 * `env/identity.env`: Điền `DATABASE_URL` Supabase và connection string RabbitMQ.
-* `caddy/Caddyfile`: Cấu hình domain hoặc cấu hình test port `:80` nếu chưa có domain.
+* `caddy/Caddyfile`: FE chạy tại `:5173`; domain/HTTPS có thể cấu hình sau.
 
 ### Bước 5: Khởi động hệ thống
 ```bash
 ./scripts/deploy.sh
 ```
+
+Frontend được pull từ Docker Hub bằng image public `baocules/pbl6-web:latest`. Sau khi image mới được publish, chạy lại `./scripts/deploy.sh` để cập nhật service `web` và Caddy.
+
+### Tự động deploy FE sau khi push
+
+Workflow trong repo `fe` sẽ tự động build, push image `baocules/pbl6-web:latest` và SSH vào EC2 để chạy `bash scripts/deploy.sh web caddy`.
+
+Cấu hình các GitHub Actions secrets trong repo FE:
+
+* `DOCKERHUB_USERNAME`
+* `DOCKERHUB_TOKEN`
+* `EC2_HOST`
+* `EC2_USER` (tuỳ chọn, mặc định `ubuntu`)
+* `EC2_SSH_KEY`
+
+Job deploy chỉ pull và restart `web`/`caddy`, không restart các service backend khác. Không truyền tham số cho `deploy.sh` nếu muốn triển khai toàn bộ hệ thống.
 
 ---
 
@@ -122,6 +141,7 @@ Mở từng file bằng `nano` để điền thông tin thật:
   docker compose -f docker-compose.prod.yml logs -f identity
   docker compose -f docker-compose.prod.yml logs -f rabbitmq
   docker compose -f docker-compose.prod.yml logs -f caddy
+  docker compose -f docker-compose.prod.yml logs -f web
   ```
 * **Khởi động lại một service cụ thể:**
   ```bash

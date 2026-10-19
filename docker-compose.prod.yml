@@ -6,6 +6,7 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      - "5173:5173"
       - "15672:15672"
     environment:
       - APP_DOMAIN=${APP_DOMAIN:-api.example.com}
@@ -17,6 +18,16 @@ services:
       - rentify-net
     depends_on:
       - identity
+      - web
+
+  web:
+    image: ${DOCKERHUB_USERNAME:-baocules}/pbl6-web:latest
+    container_name: web
+    restart: unless-stopped
+    expose:
+      - "5173"
+    networks:
+      - rentify-net
 
   rabbitmq:
     image: rabbitmq:3-management-alpine

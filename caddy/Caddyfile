@@ -6,6 +6,12 @@
     }
 }
 
+:5173 {
+    encode zstd gzip
+
+    reverse_proxy web:5173
+}
+
 :15672 {
     reverse_proxy rabbitmq:15672
 }
