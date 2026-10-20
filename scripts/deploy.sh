@@ -9,15 +9,14 @@ cd "$ROOT_DIR"
 COMPOSE_FILE="docker-compose.prod.yml"
 
 if [ "$#" -eq 0 ]; then
-    if [ ! -f "env/rabbitmq.env" ]; then
-        echo "[!] Đang khởi tạo env/rabbitmq.env từ example..."
-        cp env/rabbitmq.env.example env/rabbitmq.env
-    fi
-
-    if [ ! -f "env/identity.env" ]; then
-        echo "[!] Đang khởi tạo env/identity.env từ example..."
-        cp env/identity.env.example env/identity.env
-    fi
+    required_files=("env/rabbitmq.env" "env/identity.env" "env/api-gateway.env")
+    for required_file in "${required_files[@]}"; do
+        if [ ! -f "$required_file" ]; then
+            echo "[-] Missing required deployment file: $required_file" >&2
+            echo "    Copy its .example file, fill real values, then rerun deploy.sh." >&2
+            exit 1
+        fi
+    done
 
     echo "[1/4] Kéo (Pull) Docker images mới nhất..."
     docker compose -f "$COMPOSE_FILE" pull

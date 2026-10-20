@@ -13,3 +13,7 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# Local JWT key material
+private.pem
+public.pem

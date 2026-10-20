@@ -1,33 +1,22 @@
-:80 {
+(common) {
     encode zstd gzip
 
-    handle /identity-service/* {
-        reverse_proxy identity:3001
+    header {
+        -Server
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy strict-origin-when-cross-origin
     }
 }
 
-:5173 {
-    encode zstd gzip
+# API: http://<EC2_PUBLIC_IP>
+:80 {
+    import common
+    reverse_proxy api-gateway:3000
+}
 
+# Web: http://<EC2_PUBLIC_IP>:5173
+:5173 {
+    import common
     reverse_proxy web:5173
 }
-
-:15672 {
-    reverse_proxy rabbitmq:15672
-}
-
-# {$APP_DOMAIN:api.example.com} {
-#     encode zstd gzip
-#
-#     handle /auth/* {
-#         reverse_proxy identity:3001
-#     }
-#
-#     handle {
-#         reverse_proxy identity:3001
-#     }
-# }
-#
-# rabbitmq.{$APP_DOMAIN:example.com} {
-#     reverse_proxy rabbitmq:15672
-# }

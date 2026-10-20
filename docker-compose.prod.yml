@@ -5,11 +5,7 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
-      - "443:443"
       - "5173:5173"
-      - "15672:15672"
-    environment:
-      - APP_DOMAIN=${APP_DOMAIN:-api.example.com}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -17,11 +13,32 @@ services:
     networks:
       - rentify-net
     depends_on:
-      - identity
-      - web
+      api-gateway:
+        condition: service_started
+      web:
+        condition: service_started
+
+  api-gateway:
+    image: ${DOCKERHUB_USERNAME:-baocules}/api-gateway:${IMAGE_TAG:-latest}
+    container_name: api-gateway
+    restart: unless-stopped
+    env_file:
+      - ./env/api-gateway.env
+    expose:
+      - "3000"
+    networks:
+      - rentify-net
+    depends_on:
+      identity:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   web:
-    image: ${DOCKERHUB_USERNAME:-baocules}/pbl6-web:latest
+    image: ${DOCKERHUB_USERNAME:-baocules}/pbl6-web:${IMAGE_TAG:-latest}
     container_name: web
     restart: unless-stopped
     expose:
@@ -33,8 +50,11 @@ services:
     image: rabbitmq:3-management-alpine
     container_name: rabbitmq
     restart: unless-stopped
+    expose:
+      - "5672"
     ports:
-      - "5672:5672"
+      # Management UI binds to EC2 localhost only; reach it via SSH tunnel
+      - "127.0.0.1:15672:15672"
     env_file:
       - ./env/rabbitmq.env
     volumes:
@@ -48,7 +68,7 @@ services:
       retries: 5
 
   identity:
-    image: baocules/identity-service:latest
+    image: ${DOCKERHUB_USERNAME:-baocules}/identity-service:${IMAGE_TAG:-latest}
     container_name: identity
     restart: unless-stopped
     env_file:
