@@ -34,12 +34,13 @@ Hiện tại chỉ demo bằng IP (HTTP, chưa có domain/HTTPS):
 |-----|------|
 | `http://<EC2_PUBLIC_IP>` | `api-gateway` (API) |
 | `http://<EC2_PUBLIC_IP>:5173` | `web` (Frontend) |
+| `http://<EC2_PUBLIC_IP>:15672` | RabbitMQ Management UI (chỉ IP của nhóm, xem Bước 1) |
 
 * **Caddy:** Điểm đón duy nhất từ Internet. Port 80 → API gateway, port 5173 → web. Web và API tách rời: FE tự cấu hình URL gọi API (`VITE_API_BASE_URL` lúc build).
 * **API Gateway:** Xác thực access token RS256 qua JWKS của Identity, rate limit, rồi route tới các backend service.
 * **Frontend Web:** Image `${DOCKERHUB_USERNAME}/pbl6-web`, static SPA chạy nội bộ tại port 5173.
 * **Identity Service:** Chỉ nằm trong mạng nội bộ `rentify-net`, không publish port ra ngoài.
-* **RabbitMQ:** Broker nội bộ. AMQP (5672) chỉ trong Docker network; Management UI (15672) chỉ bind `127.0.0.1` của EC2, truy cập qua SSH tunnel (xem phần vận hành).
+* **RabbitMQ:** Broker nội bộ. AMQP (5672) chỉ trong Docker network. Management UI (15672) được Caddy publish ra ngoài; đây là trang admin nên Security Group chỉ được mở port này cho IP của nhóm.
 * **Supabase:** Managed PostgreSQL trên cloud.
 
 ---
@@ -75,8 +76,9 @@ infra/
 * **SSH (Port 22):** IP của bạn (hoặc `0.0.0.0/0`)
 * **API (Port 80):** `0.0.0.0/0`
 * **Frontend Web (Port 5173):** `0.0.0.0/0` (hoặc chỉ IP cần demo)
+* **RabbitMQ UI (Port 15672):** **chỉ IP của từng thành viên** (`<ip>/32`), không dùng `0.0.0.0/0`. Đây là trang admin, ai đăng nhập được là xem/xoá được mọi queue và tạo user.
 
-Không mở `5672`, `15672`, `3000`, `3001` ra Internet.
+Không mở `5672`, `3000`, `3001` ra Internet.
 
 ### Bước 2: SSH vào máy EC2
 Sử dụng file key `rentify-key.pem`:
@@ -172,11 +174,7 @@ Job deploy chỉ pull và restart `web`/`caddy`, không restart các service bac
   ```bash
   docker compose -f docker-compose.prod.yml down
   ```
-* **Mở RabbitMQ Management UI (qua SSH tunnel, chạy trên máy cá nhân):**
-  ```bash
-  ssh -i rentify-key.pem -L 15672:127.0.0.1:15672 ubuntu@<IP_PUBLIC_EC2>
-  # rồi mở http://localhost:15672
-  ```
+* **Mở RabbitMQ Management UI:** `http://<IP_PUBLIC_EC2>:15672`, đăng nhập bằng tài khoản admin trong `env/rabbitmq.env`. Nếu bị từ chối kết nối, kiểm tra IP hiện tại của bạn (`curl ifconfig.me`) đã có trong inbound rule port 15672 chưa.
 * **Thêm user RabbitMQ cho service mới / đổi password:** sửa `env/rabbitmq-users.env`, sửa `RABBITMQ_URL` trong env của service đó, rồi chạy:
   ```bash
   bash scripts/sync-rabbitmq-users.sh            # chỉ đồng bộ user

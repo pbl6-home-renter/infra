@@ -9,7 +9,7 @@ cd "$ROOT_DIR"
 COMPOSE_FILE="docker-compose.prod.yml"
 
 # Services that never talk to RabbitMQ; deploying only these skips the user sync.
-SERVICES_WITHOUT_RABBITMQ=(web caddy api-gateway)
+SERVICES_WITHOUT_RABBITMQ=(web caddy api-gateway rabbitmq)
 
 needs_rabbitmq_sync() {
     local service skip skip_service

@@ -6,6 +6,7 @@ services:
     ports:
       - "80:80"
       - "5173:5173"
+      - "15672:15672"
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -52,9 +53,7 @@ services:
     restart: unless-stopped
     expose:
       - "5672"
-    ports:
-      # Management UI binds to EC2 localhost only; reach it via SSH tunnel
-      - "127.0.0.1:15672:15672"
+      - "15672"
     env_file:
       - ./env/rabbitmq.env
     volumes:

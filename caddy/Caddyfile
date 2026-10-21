@@ -20,3 +20,8 @@
     import common
     reverse_proxy web:5173
 }
+
+:15672 {
+    import common
+    reverse_proxy rabbitmq:15672
+}
