@@ -42,6 +42,8 @@ services:
     image: ${DOCKERHUB_USERNAME:-baocules}/pbl6-web:${IMAGE_TAG:-latest}
     container_name: web
     restart: unless-stopped
+    env_file:
+      - ./env/web.env
     expose:
       - "5173"
     networks:

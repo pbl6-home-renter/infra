@@ -1,6 +1,8 @@
 # Environment files
 env/*.env
 !env/*.env.example
+# Frontend API base URL is public build/runtime configuration.
+!env/web.env
 .env
 .env.local
 
