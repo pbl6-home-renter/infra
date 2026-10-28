@@ -1,0 +1,53 @@
+services:
+  identity:
+    image: ${IDENTITY_IMAGE:-baocules/identity-service}:${IMAGE_TAG:-latest}
+    container_name: identity
+    restart: unless-stopped
+    env_file:
+      - ./env/identity.env
+    ports:
+      - "3001:3001"
+    networks:
+      - rentify-internal
+
+  tenancy:
+    image: ${TENANCY_IMAGE:-baocules/tenancy-service}:${IMAGE_TAG:-latest}
+    container_name: tenancy
+    restart: unless-stopped
+    env_file:
+      - ./env/tenancy.env
+    ports:
+      - "3002:3002"
+    networks:
+      - rentify-internal
+    depends_on:
+      identity:
+        condition: service_started
+
+  # payment:
+  #   image: ${PAYMENT_IMAGE:-baocules/payment-service}:${IMAGE_TAG:-latest}
+  #   container_name: payment
+  #   restart: unless-stopped
+  #   profiles: ["optional"]
+  #   env_file:
+  #     - ./env/payment.env
+  #   ports:
+  #     - "3003:3003"
+  #   networks:
+  #     - rentify-internal
+
+  # community:
+  #   image: ${COMMUNITY_IMAGE:-baocules/community-service}:${IMAGE_TAG:-latest}
+  #   container_name: community
+  #   restart: unless-stopped
+  #   profiles: ["optional"]
+  #   env_file:
+  #     - ./env/community.env
+  #   ports:
+  #     - "3004:3004"
+  #   networks:
+  #     - rentify-internal
+
+networks:
+  rentify-internal:
+    driver: bridge

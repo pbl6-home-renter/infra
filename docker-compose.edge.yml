@@ -12,12 +12,14 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     networks:
-      - rentify-net
+      - rentify-edge
     depends_on:
       api-gateway:
         condition: service_started
       web:
         condition: service_started
+      rabbitmq:
+        condition: service_healthy
 
   api-gateway:
     image: ${DOCKERHUB_USERNAME:-baocules}/api-gateway:${IMAGE_TAG:-latest}
@@ -28,10 +30,7 @@ services:
     expose:
       - "3000"
     networks:
-      - rentify-net
-    depends_on:
-      identity:
-        condition: service_started
+      - rentify-edge
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/health"]
       interval: 10s
@@ -42,17 +41,17 @@ services:
     image: ${DOCKERHUB_USERNAME:-baocules}/pbl6-web:${IMAGE_TAG:-latest}
     container_name: web
     restart: unless-stopped
-    env_file:
-      - ./env/web.env
     expose:
       - "5173"
     networks:
-      - rentify-net
+      - rentify-edge
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
     container_name: rabbitmq
     restart: unless-stopped
+    ports:
+      - "5672:5672"
     expose:
       - "5672"
       - "15672"
@@ -61,27 +60,15 @@ services:
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     networks:
-      - rentify-net
+      - rentify-edge
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "check_running"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  identity:
-    image: ${DOCKERHUB_USERNAME:-baocules}/identity-service:${IMAGE_TAG:-latest}
-    container_name: identity
-    restart: unless-stopped
-    env_file:
-      - ./env/identity.env
-    networks:
-      - rentify-net
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-
 networks:
-  rentify-net:
+  rentify-edge:
     driver: bridge
 
 volumes:
