@@ -1,190 +1,152 @@
-# Rentify Infrastructure Hub (`infra`)
+# Rentify Infrastructure Hub
 
-Kho lưu trữ điều phối trung tâm và hạ tầng triển khai (Orchestration & Infrastructure) cho hệ thống **Rentify (PBL6)** trên **AWS EC2 `t3.micro`**.
+This directory contains the deployment configuration for Rentify. Production is split across two EC2 hosts, both in the same Security Group.
 
----
-
-## 🏛️ Kiến trúc triển khai
+## Deployment topology
 
 ```text
-               Internet (Client / Web / Mobile)
-                              │
-                    ┌─────────▼─────────┐
-                    │  Port 80 · 5173   │
-                    │       Caddy       │
-                    └────┬─────────┬────┘
-                :80 (API)│         │:5173 (Web)
-                         ▼         ▼   (Docker network: rentify-net)
-              ┌──────────────┐  ┌──────────────┐
-              │ api-gateway  │  │     web      │
-              │ (Port 3000)  │  │ (Port 5173)  │
-              └──────┬───────┘  └──────────────┘
-                     ▼
-              ┌──────────────┐     ┌──────────────┐
-              │   identity   │ ──► │   rabbitmq   │
-              │ (Port 3001)  │     │    (5672)    │
-              └──────┬───────┘     └──────────────┘
-                     ▼
-          Supabase PostgreSQL (Cloud)
+Internet
+   |
+Edge host (public)
+  Caddy · Web · API Gateway · RabbitMQ
+   |
+   | private network / Security Group
+   v
+Internal host
+  Identity · Tenancy · Payment · Community · AI
 ```
 
-Hiện tại chỉ demo bằng IP (HTTP, chưa có domain/HTTPS):
+Docker networks are local to each host. Cross-host communication uses private IPs configured only in the real, untracked env files on the servers.
 
-| URL | Đích |
-|-----|------|
-| `http://<EC2_PUBLIC_IP>` | `api-gateway` (API) |
-| `http://<EC2_PUBLIC_IP>:5173` | `web` (Frontend) |
-| `http://<EC2_PUBLIC_IP>:15672` | RabbitMQ Management UI (chỉ IP của nhóm, xem Bước 1) |
+## Compose stacks
 
-* **Caddy:** Điểm đón duy nhất từ Internet. Port 80 → API gateway, port 5173 → web. Web và API tách rời: FE tự cấu hình URL gọi API (`VITE_API_BASE_URL` lúc build).
-* **API Gateway:** Xác thực access token RS256 qua JWKS của Identity, rate limit, rồi route tới các backend service.
-* **Frontend Web:** Image `${DOCKERHUB_USERNAME}/pbl6-web`, static SPA chạy nội bộ tại port 5173.
-* **Identity Service:** Chỉ nằm trong mạng nội bộ `rentify-net`, không publish port ra ngoài.
-* **RabbitMQ:** Broker nội bộ. AMQP (5672) chỉ trong Docker network. Management UI (15672) được Caddy publish ra ngoài; đây là trang admin nên Security Group chỉ được mở port này cho IP của nhóm.
-* **Supabase:** Managed PostgreSQL trên cloud.
+| File | Host | Services |
+|---|---|---|
+| `docker-compose.edge.yml` | Edge host | `caddy`, `web`, `api-gateway`, `rabbitmq` |
+| `docker-compose.internal.yml` | Internal host | `identity`, `tenancy`, optional `payment`, `community` |
 
----
+Use `scripts/deploy.sh` with `DEPLOY_STACK=edge` or `DEPLOY_STACK=internal`.
 
-## 📁 Cấu trúc thư mục
+## Network rules
 
-```text
-infra/
-├── caddy/
-│   └── Caddyfile                # Reverse proxy: :80 → API, :5173 → web
-├── env/
-│   ├── api-gateway.env.example  # Mẫu biến môi trường cho API Gateway
-│   ├── identity.env.example     # Mẫu biến môi trường cho Identity Service
-│   ├── rabbitmq.env.example     # Mẫu tài khoản admin RabbitMQ
-│   └── rabbitmq-users.env.example # Mẫu user RabbitMQ cho từng service
-├── scripts/
-│   ├── setup-swap.sh            # Tạo 2GB Swap Memory (chống OOM cho t3.micro)
-│   ├── setup-server.sh          # Cài đặt Docker & Docker Compose trên Ubuntu EC2
-│   ├── generate-jwt-keys.sh     # Sinh cặp key RS256 cho Identity Service
-│   ├── sync-rabbitmq-users.sh   # Tạo/cập nhật user RabbitMQ cho từng service (deploy.sh tự gọi)
-│   └── deploy.sh                # Script kéo image mới và reload container
-├── docker-compose.prod.yml      # File cấu hình chạy toàn bộ services trên EC2
-├── .gitignore                   # Chặn commit secret (env/*.env, .env, *.pem)
-└── README.md
-```
+The Security Group should allow:
 
----
+- Edge host: `80` and `5173` from the Internet; `15672` only from team IPs; `5672` only from the internal host.
+- Internal host: backend ports `3001–3004` only from the edge host; SSH only from team IPs.
+- Never expose `3000`, `3001–3004`, or `5672` publicly.
 
-## 🚀 Hướng dẫn triển khai EC2 từ đầu (Runbook)
+## Initial server setup
 
-### Bước 1: Mở Port trên AWS Security Group
-Đảm bảo Instance EC2 của bạn đã được gắn Security Group mở các Inbound rules:
-* **SSH (Port 22):** IP của bạn (hoặc `0.0.0.0/0`)
-* **API (Port 80):** `0.0.0.0/0`
-* **Frontend Web (Port 5173):** `0.0.0.0/0` (hoặc chỉ IP cần demo)
-* **RabbitMQ UI (Port 15672):** **chỉ IP của từng thành viên** (`<ip>/32`), không dùng `0.0.0.0/0`. Đây là trang admin, ai đăng nhập được là xem/xoá được mọi queue và tạo user.
+Run on each host:
 
-Không mở `5672`, `3000`, `3001` ra Internet.
-
-### Bước 2: SSH vào máy EC2
-Sử dụng file key `rentify-key.pem`:
 ```bash
-chmod 400 rentify-key.pem
-ssh -i rentify-key.pem ubuntu@<IP_PUBLIC_EC2>
-```
-
-### Bước 3: Cài đặt môi trường ban đầu
-Trên terminal của EC2:
-```bash
-# 1. Clone repo infra về thư mục home
-git clone https://github.com/pbl6-home-renter/infra.git
+git clone <INFRA_REPOSITORY_URL> infra
 cd infra
-
-# 2. Cấp quyền thực thi cho các script
 chmod +x scripts/*.sh
-
-# 3. Tạo 2GB Swap Memory (BẮT BUỘC để t3.micro không bị tràn RAM)
 sudo ./scripts/setup-swap.sh
-
-# 4. Cài đặt Docker và Docker Compose
 ./scripts/setup-server.sh
-
-# 5. Đăng xuất và đăng nhập lại SSH để nhận nhóm docker
-exit
-ssh -i rentify-key.pem ubuntu@<IP_PUBLIC_EC2>
-cd infra
 ```
 
-### Bước 4: Cấu hình biến môi trường
-Tạo các file env thật từ các file mẫu:
+Create `.deploy.env` from `.deploy.env.example`:
+
+```bash
+cp .deploy.env.example .deploy.env
+```
+
+Set the stack per host:
+
+```env
+# Edge host
+DEPLOY_STACK=edge
+
+# Internal host
+DEPLOY_STACK=internal
+```
+
+## Edge host configuration
+
+Create these files from their examples:
+
 ```bash
 cp env/rabbitmq.env.example env/rabbitmq.env
 cp env/rabbitmq-users.env.example env/rabbitmq-users.env
-cp env/identity.env.example env/identity.env
 cp env/api-gateway.env.example env/api-gateway.env
 ```
 
-Sinh cặp key JWT (RS256) cho Identity Service:
-```bash
-cd /tmp && ~/infra/scripts/generate-jwt-keys.sh
+In `env/api-gateway.env`, replace placeholders with the internal host private address:
+
+```env
+IDENTITY_SERVICE_URL=http://<INTERNAL_PRIVATE_HOST>:3001
+TENANCY_SERVICE_URL=http://<INTERNAL_PRIVATE_HOST>:3002
+PAYMENT_SERVICE_URL=http://<INTERNAL_PRIVATE_HOST>:3003
+COMMUNITY_SERVICE_URL=http://<INTERNAL_PRIVATE_HOST>:3004
+JWKS_URL=http://<INTERNAL_PRIVATE_HOST>:3001/api/v1/.well-known/jwks.json
 ```
-Script in ra 2 dòng `JWT_PRIVATE_KEY=...` và `JWT_PUBLIC_KEY=...` (đã ở dạng một dòng với `\n`). Dán đè 2 dòng placeholder trong `env/identity.env`, sau đó xoá `/tmp/private.pem` và `/tmp/public.pem`.
 
-Mở từng file bằng `nano` để điền thông tin thật:
-* `env/rabbitmq.env`: Điền user/pass **admin** của RabbitMQ (dùng để vào Management UI). RabbitMQ chỉ đọc file này **một lần** khi tạo volume lần đầu.
-* `env/rabbitmq-users.env`: Mỗi service một dòng `<username>=<password>`. `deploy.sh` tự tạo user, đặt lại password và cấp quyền theo file này. Nên dùng password chỉ gồm chữ và số (`openssl rand -hex 24`).
-* `env/identity.env`: Điền `DATABASE_URL` Supabase, `RABBITMQ_URL=amqp://identity-service:<password>@rabbitmq:5672` (đúng password của dòng `identity-service` trong `rabbitmq-users.env`) và 2 JWT key ở trên. `JWT_ISSUER`/`JWT_AUDIENCE` phải khớp với `env/api-gateway.env`.
-* `env/api-gateway.env`: Thường giữ nguyên mặc định; chỉnh rate limit nếu cần.
+Deploy the edge stack:
 
-> Tuỳ chọn: tạo file `.env` ở thư mục gốc để ghi đè `DOCKERHUB_USERNAME` (mặc định `baocules`) hoặc `IMAGE_TAG` (mặc định `latest`). Không có file này hệ thống vẫn chạy.
-
-### Bước 5: Khởi động hệ thống
 ```bash
 ./scripts/deploy.sh
 ```
 
-Kiểm tra: `curl http://<EC2_PUBLIC_IP>/health` trả `{"status":"ok",...}` và mở `http://<EC2_PUBLIC_IP>:5173` thấy trang web.
+RabbitMQ users are synchronized only on this host because RabbitMQ runs here.
 
-Frontend được pull từ Docker Hub bằng image public `baocules/pbl6-web:latest`. Sau khi image mới được publish, chạy lại `./scripts/deploy.sh` để cập nhật service `web` và Caddy.
+## Internal host configuration
 
-### Tự động deploy FE sau khi push
+Create the required env files:
 
-Workflow trong repo `fe` sẽ tự động build, push image `baocules/pbl6-web:latest` và SSH vào EC2 để chạy `bash scripts/deploy.sh web caddy`.
+```bash
+cp env/identity.env.example env/identity.env
+cp env/tenancy.env.example env/tenancy.env
+```
 
-Cấu hình các GitHub Actions secrets trong repo FE:
+In each service env, set RabbitMQ to the edge host private address:
 
-* `DOCKERHUB_USERNAME`
-* `DOCKERHUB_TOKEN`
-* `EC2_HOST`
-* `EC2_USER` (tuỳ chọn, mặc định `ubuntu`)
-* `EC2_SSH_KEY`
+```env
+RABBITMQ_URL=amqp://<service-user>:<password>@<EDGE_PRIVATE_HOST>:5672
+```
 
-Job deploy chỉ pull và restart `web`/`caddy`, không restart các service backend khác. Không truyền tham số cho `deploy.sh` nếu muốn triển khai toàn bộ hệ thống.
+Deploy Identity and Tenancy:
 
----
+```bash
+./scripts/deploy.sh
+```
 
-## 🛠️ Các lệnh vận hành thường dùng
+Optional services are enabled only after their images and env files exist:
 
-* **Xem log thời gian thực của một service:**
-  ```bash
-  docker compose -f docker-compose.prod.yml logs -f identity
-  docker compose -f docker-compose.prod.yml logs -f rabbitmq
-  docker compose -f docker-compose.prod.yml logs -f caddy
-  docker compose -f docker-compose.prod.yml logs -f web
-  ```
-* **Khởi động lại một service cụ thể:**
-  ```bash
-  docker compose -f docker-compose.prod.yml restart identity
-  ```
-* **Dừng toàn bộ hệ thống:**
-  ```bash
-  docker compose -f docker-compose.prod.yml down
-  ```
-* **Mở RabbitMQ Management UI:** `http://<IP_PUBLIC_EC2>:15672`, đăng nhập bằng tài khoản admin trong `env/rabbitmq.env`. Nếu bị từ chối kết nối, kiểm tra IP hiện tại của bạn (`curl ifconfig.me`) đã có trong inbound rule port 15672 chưa.
-* **Thêm user RabbitMQ cho service mới / đổi password:** sửa `env/rabbitmq-users.env`, sửa `RABBITMQ_URL` trong env của service đó, rồi chạy:
-  ```bash
-  bash scripts/sync-rabbitmq-users.sh            # chỉ đồng bộ user
-  bash scripts/deploy.sh <service>               # tạo lại container để nhận RABBITMQ_URL mới
-  docker exec rabbitmq rabbitmqctl list_users    # kiểm tra
-  ```
-  Script không xoá user nào. Muốn xoá: `docker exec rabbitmq rabbitmqctl delete_user <username>`.
-* **Kiểm tra mức sử dụng RAM & CPU hiện tại:**
-  ```bash
-  docker stats
-  free -h
-  ```
+```bash
+COMPOSE_PROFILES=optional DEPLOY_STACK=internal ./scripts/deploy.sh
+```
 
+## Common operations
+
+```bash
+# Edge logs
+docker compose -f docker-compose.edge.yml logs -f api-gateway
+docker compose -f docker-compose.edge.yml logs -f rabbitmq
+
+# Internal logs
+docker compose -f docker-compose.internal.yml logs -f identity
+docker compose -f docker-compose.internal.yml logs -f tenancy
+
+# Resource usage
+docker stats
+free -h
+```
+
+Deploy one service:
+
+```bash
+DEPLOY_STACK=edge ./scripts/deploy.sh api-gateway
+DEPLOY_STACK=internal ./scripts/deploy.sh identity
+```
+
+## CI/CD targets
+
+- Frontend and API Gateway workflows target the edge host.
+- Identity and backend workflows target the internal host and must use `DEPLOY_STACK=internal`.
+- Images are built in GitHub Actions and pulled from Docker Hub; do not build images on the 1 GB EC2 hosts.
+
+## Secrets
+
+Never commit `.deploy.env`, `env/*.env`, database URLs, RabbitMQ passwords, JWT keys, or SSH keys. Keep real host addresses in the server-local env files or GitHub Secrets only.
