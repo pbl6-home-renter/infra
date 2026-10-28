@@ -107,20 +107,60 @@ COMPOSE_PROFILES=optional DEPLOY_STACK=internal ./scripts/deploy.sh
 
 Server backend không chạy `sync-rabbitmq-users.sh`; RabbitMQ nằm ở server edge.
 
-## 6. Security Group
+## 6. Cấu hình AWS Security Group
 
-### Server edge
+Hai EC2 đang dùng chung một Security Group. Vì vậy, với các kết nối nội bộ, chọn **Security Group của chính nhóm hiện tại** ở cột `Source`, không nhập public IP hoặc private IP.
 
-- Mở `80` và `5173` cho người dùng truy cập.
-- Mở `15672` chỉ cho IP của thành viên nhóm.
-- Cho phép `5672` từ Security Group của server backend.
-- Không mở trực tiếp `3000` ra Internet.
+Vào AWS Console → **EC2** → **Security Groups** → chọn Security Group đang gắn cho cả hai instance → **Edit inbound rules**.
 
-### Server backend
+### Các inbound rule cần có
 
-- Cho phép các port backend `3001–3004` chỉ từ Security Group của server edge.
-- Mở SSH chỉ cho IP quản trị của nhóm.
-- Không mở port backend cho toàn bộ Internet.
+| Type | Port | Source | Mục đích |
+|---|---:|---|---|
+| SSH | `22` | IP quản trị của nhóm `/32` | SSH vào server |
+| Custom TCP | `80` | `0.0.0.0/0` | Caddy API |
+| Custom TCP | `5173` | `0.0.0.0/0` hoặc IP demo | Web frontend |
+| Custom TCP | `15672` | IP quản trị của nhóm `/32` | RabbitMQ Management UI |
+| Custom TCP | `5672` | Security Group hiện tại | Backend server → RabbitMQ |
+| Custom TCP | `3001-3004` | Security Group hiện tại | Edge server → backend services |
+
+### Cách nhập Source là Security Group
+
+Trong màn hình **Edit inbound rules**, với mỗi rule nội bộ:
+
+1. Chọn `Custom TCP`.
+2. Nhập port `5672` hoặc `3001-3004`.
+3. Ở `Source type`, chọn `Custom`.
+4. Ở ô `Source`, nhập và chọn **Security Group ID dạng `sg-...`** của nhóm đang gắn cho cả hai EC2.
+5. Kiểm tra chip `sg-...` đã xuất hiện dưới ô Source rồi bấm **Save rules**.
+
+Không dùng Security Group Rule ID dạng `sgr-...`; đó chỉ là ID của từng rule. Không dùng `0.0.0.0/0` cho hai port nội bộ này.
+
+### Lưu ý bảo mật
+
+- Không mở `3000`, `3001–3004`, `5672` hoặc `15672` cho `0.0.0.0/0`.
+- Port `3000` chỉ là port nội bộ của API Gateway, Caddy proxy ra port `80`.
+- Port `3001–3004` được mở bằng Security Group vì API Gateway ở máy khác cần gọi backend.
+- Port `5672` được mở bằng Security Group vì Identity/backend ở server backend cần kết nối RabbitMQ ở server edge.
+- Nếu chỉ muốn truy cập Web trong nhóm, thay `0.0.0.0/0` ở port `5173` bằng IP nhóm `/32`.
+- Sau khi thêm rule, kiểm tra cả UFW trên Ubuntu nếu đang bật; Security Group cho phép kết nối nhưng UFW vẫn có thể chặn.
+
+### Kiểm tra kết nối từ server backend
+
+Thay `<EDGE_PRIVATE_HOST>` bằng private IP thật trên server:
+
+```bash
+nc -vz <EDGE_PRIVATE_HOST> 5672
+```
+
+### Kiểm tra kết nối từ server edge
+
+```bash
+nc -vz <INTERNAL_PRIVATE_HOST> 3001
+nc -vz <INTERNAL_PRIVATE_HOST> 3002
+```
+
+Nếu kết nối thành công, kết quả sẽ chứa `succeeded` hoặc `open`. Nếu bị timeout, kiểm tra lại Security Group, private IP và UFW.
 
 ## 7. Deploy từng service
 
