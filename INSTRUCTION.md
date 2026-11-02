@@ -85,6 +85,7 @@ Tạo các file môi trường:
 ```bash
 cp env/identity.env.example env/identity.env
 cp env/tenancy.env.example env/tenancy.env
+cp env/community.env.example env/community.env
 ```
 
 Trong env của từng service, cấu hình RabbitMQ bằng private IP của server edge:
@@ -92,6 +93,8 @@ Trong env của từng service, cấu hình RabbitMQ bằng private IP của ser
 ```env
 RABBITMQ_URL=amqp://<service-user>:<password>@<EDGE_PRIVATE_HOST>:5672
 ```
+
+Trong `env/community.env`, cấu hình database riêng cho Community, đặt `SERVICE_TOKEN` trùng với các service khác, và thay RabbitMQ host/credentials bằng private host và user đã cấu hình trên edge. Community chạy tại cổng `3004`.
 
 Deploy Identity và Tenancy:
 
@@ -103,6 +106,15 @@ Các service có profile `optional` chỉ bật sau khi đã có Docker image v�
 
 ```bash
 COMPOSE_PROFILES=optional DEPLOY_STACK=internal ./scripts/deploy.sh
+```
+
+Kiểm tra Community từ internal host và từ edge host (thay `<INTERNAL_PRIVATE_HOST>` bằng private IP thật):
+
+```bash
+docker compose -f docker-compose.internal.yml --profile optional ps community
+docker compose -f docker-compose.internal.yml logs --tail=100 community
+curl -fsS http://<INTERNAL_PRIVATE_HOST>:3004/api/v1/community/health
+curl -fsS http://<API_GATEWAY_HOST>:3000/api/v1/community/health
 ```
 
 Server backend không chạy `sync-rabbitmq-users.sh`; RabbitMQ nằm ở server edge.

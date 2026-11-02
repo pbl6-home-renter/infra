@@ -36,17 +36,26 @@ services:
   #   networks:
   #     - rentify-internal
 
-  # community:
-  #   image: ${COMMUNITY_IMAGE:-baocules/community-service}:${IMAGE_TAG:-latest}
-  #   container_name: community
-  #   restart: unless-stopped
-  #   profiles: ["optional"]
-  #   env_file:
-  #     - ./env/community.env
-  #   ports:
-  #     - "3004:3004"
-  #   networks:
-  #     - rentify-internal
+  community:
+    image: ${COMMUNITY_IMAGE:-baocules/community-service}:${IMAGE_TAG:-latest}
+    container_name: community
+    restart: unless-stopped
+    profiles: ["optional"]
+    env_file:
+      - ./env/community.env
+    ports:
+      - "3004:3004"
+    networks:
+      - rentify-internal
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3004/api/v1/community/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
 networks:
   rentify-internal:

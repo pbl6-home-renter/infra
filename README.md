@@ -57,7 +57,7 @@ flowchart LR
     subgraph internal["Internal host · docker-compose.internal.yml · network rentify-internal"]
         id["identity<br/>:3001"]
         ten["tenancy<br/>:3002"]
-        opt["payment :3003 · community :3004<br/>(optional, chưa bật)"]
+        opt["payment :3003 · community :3004<br/>(profile optional)"]
     end
 
     db[("Supabase PostgreSQL<br/>(database per service)")]
@@ -90,7 +90,7 @@ Hai host **không** dùng chung Docker network. Giao tiếp khác máy đi qua p
 | `identity` | internal | `${IDENTITY_IMAGE:-baocules/identity-service}:${IMAGE_TAG:-latest}` | 3001 | `3001` | Không — chỉ Security Group |
 | `tenancy` | internal | `${TENANCY_IMAGE:-baocules/tenancy-service}:${IMAGE_TAG:-latest}` | 3002 | `3002` | Không — chỉ Security Group |
 | `payment` | internal | `${PAYMENT_IMAGE:-baocules/payment-service}` | 3003 | `3003` | Không (đang comment, profile `optional`) |
-| `community` | internal | `${COMMUNITY_IMAGE:-baocules/community-service}` | 3004 | `3004` | Không (đang comment, profile `optional`) |
+| `community` | internal | `${COMMUNITY_IMAGE:-baocules/community-service}` | 3004 | `3004` | Không (profile `optional`; cần bật profile) |
 
 **Reverse proxy (Caddy).** `caddy/Caddyfile` định nghĩa snippet `(common)` bật nén `zstd gzip`, bỏ header `Server` và thêm `X-Content-Type-Options nosniff`, `X-Frame-Options DENY`, `Referrer-Policy strict-origin-when-cross-origin`. Ba site block:
 
@@ -193,6 +193,7 @@ bash scripts/sync-rabbitmq-users.sh
 ```bash
 cp env/identity.env.example env/identity.env
 cp env/tenancy.env.example env/tenancy.env
+cp env/community.env.example env/community.env
 ```
 
 Sinh cặp khóa JWT RS256 cho Identity (script từ chối ghi đè nếu `private.pem`/`public.pem` đã tồn tại):
@@ -210,7 +211,9 @@ RABBITMQ_URL=amqp://<service-user>:<password>@<EDGE_PRIVATE_HOST>:5672
 ```
 
 > [!WARNING]
-> `env/identity.env.example` vẫn để `RABBITMQ_URL=...@rabbitmq:5672` (từ thời chạy một host). Trên internal host không có container `rabbitmq`, nên **phải** đổi sang `<EDGE_PRIVATE_HOST>`. Ngoài ra `SERVICE_TOKEN` phải giống nhau ở mọi service.
+> `RABBITMQ_URL` của các service trên internal host phải trỏ tới `<EDGE_PRIVATE_HOST>` vì RabbitMQ chạy trên edge host. `SERVICE_TOKEN` phải giống nhau ở mọi service.
+
+Trong `env/community.env`, cấu hình database riêng cho Community, đặt `SERVICE_TOKEN` trùng với các service khác, và thay RabbitMQ host/credentials bằng private host và user đã cấu hình trên edge. Community chạy tại cổng `3004`.
 
 Deploy Identity và Tenancy:
 
@@ -218,10 +221,19 @@ Deploy Identity và Tenancy:
 ./scripts/deploy.sh
 ```
 
-Các service optional chỉ bật được sau khi có image, file env tương ứng **và** đã bỏ comment block `payment` / `community` trong `docker-compose.internal.yml`:
+Các service optional chỉ bật được sau khi có image và file env tương ứng trong `env/`:
 
 ```bash
 COMPOSE_PROFILES=optional DEPLOY_STACK=internal ./scripts/deploy.sh
+```
+
+Health check Community:
+
+```bash
+docker compose -f docker-compose.internal.yml --profile optional ps community
+docker compose -f docker-compose.internal.yml logs --tail=100 community
+curl -fsS http://<INTERNAL_PRIVATE_HOST>:3004/api/v1/community/health
+curl -fsS http://<API_GATEWAY_HOST>:3000/api/v1/community/health
 ```
 
 ### 4. Kiểm tra kết nối giữa hai host
@@ -233,6 +245,7 @@ nc -vz <EDGE_PRIVATE_HOST> 5672
 # Từ edge host
 nc -vz <INTERNAL_PRIVATE_HOST> 3001
 nc -vz <INTERNAL_PRIVATE_HOST> 3002
+nc -vz <INTERNAL_PRIVATE_HOST> 3004
 ```
 
 Kết quả thành công chứa `succeeded` hoặc `open`. Nếu timeout, kiểm tra lại Security Group, private IP và UFW.
