@@ -303,7 +303,7 @@ Chỉ commit file `*.example`. File thật nằm trên server (`.deploy.env`, `e
 | `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY` | PEM với `\n` literal |
 | `JWT_KEY_ID`, `JWT_ISSUER`, `JWT_AUDIENCE` | Metadata JWT |
 | `SERVICE_TOKEN` | Secret chung cho endpoint `internal/*` |
-| `TENANCY_SERVICE_URL`, `INTERNAL_HTTP_TIMEOUT_MS` | Internal HTTP client |
+| `TENANCY_SERVICE_URL`, `COMMUNITY_SERVICE_URL`, `INTERNAL_HTTP_TIMEOUT_MS` | Internal HTTP client |
 
 </details>
 
