@@ -40,7 +40,6 @@ services:
     image: ${COMMUNITY_IMAGE:-baocules/community-service}:${IMAGE_TAG:-latest}
     container_name: community
     restart: unless-stopped
-    profiles: ["optional"]
     env_file:
       - ./env/community.env
     ports:
